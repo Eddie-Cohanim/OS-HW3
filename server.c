@@ -3,19 +3,14 @@
 #include "queue.h"
 #include <pthread.h>
 #include "thread.h"
-#include <stdbool.h>
 
 #define ARGS_SIZE 5
 
-pthread_mutex_t m;
-pthread_cond_t cond_is_pending_request_empty;
-pthread_cond_t cond_is_buffer_available;
-pthread_cond_t cond_is_worker_threads_and_pending_requests_empty;
-
 pthread_mutex_t queueLock;
-pthread_cond_t queueNoWait;
-pthread_cond_t queueOverload;
-pthread_cond_t queueBlockFlush;
+pthread_cond_t isPendingQueueEmpty;
+pthread_cond_t isBufferAvailable;
+pthread_cond_t areBothEmpty;
+
 
 
 Queue* pendingRequestsQueue;
@@ -34,9 +29,9 @@ enum SCHEDULER_ALGORITHM {
 
 void initializeMutexAndCond() {
     pthread_mutex_init(&queueLock, NULL);
-    pthread_cond_init(&queueNoWait, NULL);
-    pthread_cond_init(&queueBlockFlush, NULL);
-    pthread_cond_init(&queueOverload, NULL);
+    pthread_cond_init(&isPendingQueueEmpty, NULL);
+    pthread_cond_init(&areBothEmpty, NULL);
+    pthread_cond_init(&isBufferAvailable, NULL);
 }
 
 void getargs(int *port,int *threads_num,int* queue_size,enum SCHEDULER_ALGORITHM *schedalg, int argc, char *argv[])
@@ -51,15 +46,20 @@ void getargs(int *port,int *threads_num,int* queue_size,enum SCHEDULER_ALGORITHM
 
     if (strcmp(argv[4], "block") == 0) {
         *schedalg = BLOCK;
-    } else if (strcmp(argv[4], "dt") == 0) {
+    }
+     else if (strcmp(argv[4], "dt") == 0) {
         *schedalg = DROP_TAIL;
-    } else if (strcmp(argv[4], "dh") == 0) {
+    }
+     else if (strcmp(argv[4], "dh") == 0) {
         *schedalg = DROP_HEAD;
-    } else if (strcmp(argv[4], "bf") == 0) {
+    }
+     else if (strcmp(argv[4], "bf") == 0) {
         *schedalg = BLOCK_FLUSH;
-    } else if (strcmp(argv[4], "random") == 0) {
+    }
+     else if (strcmp(argv[4], "random") == 0) {
         *schedalg = RANDOM;
-    } else {
+    }
+     else {
         exit(1);
     }
 }
@@ -69,8 +69,8 @@ void *processRequest(void *arg){
 
     while(1){
         pthread_mutex_lock(&queueLock);
-        while(getSize(pendingRequestsQueue)==0) {
-            pthread_cond_wait(&queueNoWait, &queueLock);
+        while(getSize(pendingRequestsQueue) == 0){
+            pthread_cond_wait(&isPendingQueueEmpty, &queueLock);
         }
         Node* requestNode = popQueue(pendingRequestsQueue);
 
@@ -84,73 +84,15 @@ void *processRequest(void *arg){
         Close(requestNode->m_connFd);
         free(requestNode);
         pthread_mutex_lock(&queueLock);
-        pthread_cond_signal(&queueOverload);
+        pthread_cond_signal(&isBufferAvailable);
         threadsInUse--;
 
         if (getSize(pendingRequestsQueue) == 0 && threadsInUse == 0){
-            pthread_cond_signal(&queueBlockFlush); // for block_flush sched algorithm
+            pthread_cond_signal(&areBothEmpty); // for block_flush sched algorithm
         }
         pthread_mutex_unlock(&queueLock);
     }
 }
-
-
-
-void blockAlgotithm(int queueSize){
-    while (getSize(pendingRequestsQueue) + threadsInUse == queueSize) {
-        pthread_cond_wait(&queueOverload, &queueLock);
-    }
-}
-
-void dropTailAlgorithm(int connFd ){
-    Close(connFd);
-    pthread_mutex_unlock(&queueLock);
-}
-
-void dropHeadAlgorithm(int connFd){
-    if(getSize(pendingRequestsQueue) == 0){
-        Close(connFd);
-        pthread_mutex_unlock(&queueLock);
-        return;
-    }
-    else {
-        Node* head = popQueue(pendingRequestsQueue);
-        Close(head->m_connFd);
-    } 
-}
-
-void blockFlushAlgorithm(int connFd){
-    while (getSize(pendingRequestsQueue) + threadsInUse != 0) {
-        pthread_cond_wait(&queueBlockFlush, &queueLock);
-    }
-    Close(connFd);
-    pthread_mutex_unlock(&queueLock);
-}
-
-bool randomAlgorithm(int connFd){
-    if (getSize(pendingRequestsQueue)==0) {
-        Close(connFd);
-        pthread_mutex_unlock(&queueLock);
-        return true;
-    }
-
-    int numToDrop = (int) ((getSize(pendingRequestsQueue) + 1) / 2);
-
-    for (int i = 0; i < numToDrop; i++) {
-        int element_index_to_drop = rand() % getSize(pendingRequestsQueue);
-        Node* node_to_drop = getNodeInIndex(pendingRequestsQueue, element_index_to_drop);
-        Close(node_to_drop->m_connFd);
-        removeNodeFromQueue(pendingRequestsQueue, node_to_drop);
-    }
-
-    return false;
-}
-
-
-
-
-
-
 
 int main(int argc, char *argv[])
 {
@@ -169,9 +111,7 @@ int main(int argc, char *argv[])
         int* threadIndex = malloc(sizeof(int));
         *threadIndex = i;
         pthread_create(&threads[i], NULL, processRequest, (void*)threadIndex);
-        
         threadsStats[i] = createThreadStats(i);
-        
     }
 
     listenFd = Open_listenfd(port);
@@ -185,21 +125,32 @@ int main(int argc, char *argv[])
 
         if (getSize(pendingRequestsQueue) + threadsInUse == queueSize) {
             if (schedAlg == BLOCK) {
-                blockAlgotithm(queueSize);
-                
+                while (getSize(pendingRequestsQueue) + threadsInUse == queueSize) {
+                    pthread_cond_wait(&isBufferAvailable, &queueLock);
+                }
             } else if (schedAlg == DROP_TAIL) {
-                dropTailAlgorithm(connFd);
+                Close(connFd);
+                pthread_mutex_unlock(&queueLock);
                 continue;
             } else if (schedAlg == DROP_HEAD) {
-                dropHeadAlgorithm(connFd);
-                continue;
-
+                if (getSize(pendingRequestsQueue) != 0) {
+                    Node* head = popQueue(pendingRequestsQueue);
+                    Close(head->m_connFd);
+                } else {
+                    Close(connFd);
+                    pthread_mutex_unlock(&queueLock);
+                    continue;
+                }
             } else if (schedAlg == BLOCK_FLUSH) {
-                blockFlushAlgorithm(connFd);
+                while (getSize(pendingRequestsQueue) + threadsInUse > 0) {
+                    pthread_cond_wait(&areBothEmpty, &queueLock);
+                }
+                Close(connFd);
+                pthread_mutex_unlock(&queueLock);
                 continue;
             } else if (schedAlg == RANDOM) {
 
-                /*if (getSize(pendingRequestsQueue)==0) {
+                if (getSize(pendingRequestsQueue) == 0) {
                     Close(connFd);
                     pthread_mutex_unlock(&queueLock);
                     continue;
@@ -212,19 +163,11 @@ int main(int argc, char *argv[])
                     Node* node_to_drop = getNodeInIndex(pendingRequestsQueue, element_index_to_drop);
                     Close(node_to_drop->m_connFd);
                     removeNodeFromQueue(pendingRequestsQueue, node_to_drop);
-                }*/
-
-
-
-                bool shouldContinue = randomAlgorithm(connFd);
-                if(shouldContinue == true)
-                {
-                    continue;
                 }
             }
         }
         addToQueue(pendingRequestsQueue, connFd, arrival);
-        pthread_cond_signal(&queueNoWait);
+        pthread_cond_signal(&isPendingQueueEmpty);
         pthread_mutex_unlock(&queueLock);
     }
 }
