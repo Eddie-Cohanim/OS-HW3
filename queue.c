@@ -122,6 +122,8 @@ Node* popQueue(Queue* queue){
     else {
         queue->m_endNode = NULL;
         queue->m_headNode = NULL;
+        queue->m_size--;
+
     }
     
     return headNode;

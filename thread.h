@@ -7,8 +7,8 @@ typedef struct Thread_stats{
     int m_staticReq;
     int m_id;
 
-} Thread_stats;
+} *Thread_stats;
 
-Thread_stats* CreateThreadStats(int threadsNum);
+Thread_stats createThreadStats(int threadsNum);
 
 #endif //WET3_BACKUP_THREAD_H
