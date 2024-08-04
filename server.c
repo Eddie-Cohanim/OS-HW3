@@ -94,6 +94,61 @@ void *processRequest(void *arg){
     }
 }
 
+
+void blockAlgorithm(int queueSize){
+    while (getSize(pendingRequestsQueue) + threadsInUse == queueSize) {
+        pthread_cond_wait(&isBufferAvailable, &queueLock);
+}
+}
+
+void dropTailAlgorithm(int connFd){
+    Close(connFd);
+    pthread_mutex_unlock(&queueLock);
+}
+
+
+int dropHeadAlgorithm(int connFd){
+    if (getSize(pendingRequestsQueue) != 0) {
+        Node* head = popQueue(pendingRequestsQueue);
+        Close(head->m_connFd);
+        return 0;
+    }
+    else{
+        Close(connFd);
+        pthread_mutex_unlock(&queueLock);
+        return 1;
+    }
+}
+
+void blockFlashAlgorithm(int connFd){
+    while (getSize(pendingRequestsQueue) + threadsInUse > 0) {
+        pthread_cond_wait(&areBothEmpty, &queueLock);
+    }
+    Close(connFd);
+    pthread_mutex_unlock(&queueLock);
+}
+
+int randomAlgorithm(int connFd){
+    if (getSize(pendingRequestsQueue) == 0) {
+        Close(connFd);
+        pthread_mutex_unlock(&queueLock);
+        return 0;
+        }
+
+    int numToDrop = (int) ((getSize(pendingRequestsQueue) + 1) / 2);
+
+    for (int i = 0; i < numToDrop; i++) {
+        int element_index_to_drop = rand() % getSize(pendingRequestsQueue);
+        Node* node_to_drop = getNodeInIndex(pendingRequestsQueue, element_index_to_drop);
+        Close(node_to_drop->m_connFd);
+        removeNodeFromQueue(pendingRequestsQueue, node_to_drop);
+        
+    }
+    return 1;
+}
+
+
+
 int main(int argc, char *argv[])
 {
     int listenFd, connFd, port, clientLenAdd,threadsNum, queueSize;
@@ -125,45 +180,21 @@ int main(int argc, char *argv[])
 
         if (getSize(pendingRequestsQueue) + threadsInUse == queueSize) {
             if (schedAlg == BLOCK) {
-                while (getSize(pendingRequestsQueue) + threadsInUse == queueSize) {
-                    pthread_cond_wait(&isBufferAvailable, &queueLock);
-                }
+                blockAlgorithm(queueSize);
             } else if (schedAlg == DROP_TAIL) {
-                Close(connFd);
-                pthread_mutex_unlock(&queueLock);
+                dropTailAlgorithm(connFd);
                 continue;
             } else if (schedAlg == DROP_HEAD) {
-                if (getSize(pendingRequestsQueue) != 0) {
-                    Node* head = popQueue(pendingRequestsQueue);
-                    Close(head->m_connFd);
-                } else {
-                    Close(connFd);
-                    pthread_mutex_unlock(&queueLock);
+                if(dropHeadAlgorithm(connFd) ==1){
                     continue;
                 }
             } else if (schedAlg == BLOCK_FLUSH) {
-                while (getSize(pendingRequestsQueue) + threadsInUse > 0) {
-                    pthread_cond_wait(&areBothEmpty, &queueLock);
-                }
-                Close(connFd);
-                pthread_mutex_unlock(&queueLock);
+                blockFlashAlgorithm(connFd);
                 continue;
             } else if (schedAlg == RANDOM) {
-
-                if (getSize(pendingRequestsQueue) == 0) {
-                    Close(connFd);
-                    pthread_mutex_unlock(&queueLock);
+                if(randomAlgorithm(connFd) ==0){
                     continue;
-                }
-
-                int numToDrop = (int) ((getSize(pendingRequestsQueue) + 1) / 2);
-
-                for (int i = 0; i < numToDrop; i++) {
-                    int element_index_to_drop = rand() % getSize(pendingRequestsQueue);
-                    Node* node_to_drop = getNodeInIndex(pendingRequestsQueue, element_index_to_drop);
-                    Close(node_to_drop->m_connFd);
-                    removeNodeFromQueue(pendingRequestsQueue, node_to_drop);
-                }
+                }   
             }
         }
         addToQueue(pendingRequestsQueue, connFd, arrival);
