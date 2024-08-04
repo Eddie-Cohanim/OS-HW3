@@ -80,7 +80,8 @@ void *processRequest(void *arg){
         timersub(&handle, &requestNode->m_arrival, &dispatch_time);
         threadsInUse++;
         pthread_mutex_unlock(&queueLock);
-        requestHandle(requestNode->m_connFd, requestNode->m_arrival, dispatch_time, threadsStats[threadIndex]);
+        requestHandle(requestNode->m_connFd, requestNode->m_arrival, dispatch_time,
+                      threadsStats[threadIndex], pendingRequestsQueue);
         Close(requestNode->m_connFd);
         free(requestNode);
         pthread_mutex_lock(&queueLock);

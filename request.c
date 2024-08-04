@@ -97,16 +97,48 @@ int requestParseURI(char *uri, char *filename, char *cgiargs)
 //
 // Fills in the filetype given the filename
 //
+
+
 void requestGetFiletype(char *filename, char *filetype)
 {
-    if (strstr(filename, ".html"))
+    /*int newArraySize;
+    if (strstr(filename, ".skip")){ /////////////////////////////////maybe all of this needsd to be in parseURI
+        newArraySize = sizeof(filename) - 5;
+
+        char* newFileName = malloc(sizeof(char)* newArraySize);
+        for(int i = 0; i < newArraySize; i++){
+            newFileName[i] = filename[i];
+        }
+        if (strstr(newFileName, ".html")){
+            strcpy(filetype, "text/html");
+        }
+        else if (strstr(newFileName, ".gif")){
+            strcpy(filetype, "image/gif");
+        }
+        else if (strstr(newFileName, ".jpg")){
+            strcpy(filetype, "image/jpeg");
+        }
+        else{
+            strcpy(filetype, "text/plain");
+        }
+    
+        //do something with the last node in the queue
+
+        
+    }  
+        //save the lst file in the queueu to run next
+    else*/ if (strstr(filename, ".html")){
         strcpy(filetype, "text/html");
-    else if (strstr(filename, ".gif"))
+    }
+    else if (strstr(filename, ".gif")){  
         strcpy(filetype, "image/gif");
-    else if (strstr(filename, ".jpg"))
+    }
+    else if (strstr(filename, ".jpg")){
         strcpy(filetype, "image/jpeg");
-    else
+    }
+    else{
         strcpy(filetype, "text/plain");
+    }
 }
 
 void requestServeDynamic(int fd, char *filename, char *cgiargs, struct timeval arrival, struct timeval dispatch, Thread_stats t_stats)
@@ -145,7 +177,7 @@ void requestServeStatic(int fd, char *filename, int filesize, struct timeval arr
 
     requestGetFiletype(filename, filetype);
 
-    srcfd = Open(filename, O_RDONLY, 0);
+    srcfd = Open(filename, O_RDONLY, 0);////////////////////maybe should be the new filename in case of skip?
 
     // Rather than call read() to read the file into memory,
     // which would require that we allocate a buffer, we memory-map the file
@@ -174,7 +206,8 @@ void requestServeStatic(int fd, char *filename, int filesize, struct timeval arr
 }
 
 // handle a request
-void requestHandle(int fd, struct timeval arrival, struct timeval dispatch, Thread_stats t_stats)
+void requestHandle(int fd, struct timeval arrival, struct timeval dispatch,
+                   Thread_stats t_stats, Queue* pendingRequestsQueue)
 {
     int is_static;
     struct stat sbuf;
@@ -194,6 +227,18 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch, Thre
         return;
     }
     requestReadhdrs(&rio);
+
+    //////////////////////////// we need to remove skip from the URI here before requestParseURI
+    int locationOfSkip = 0;
+    if(strstr(uri, ".skip") != NULL){
+        locationOfSkip = (int) (uri - strstr(uri, ".skip"));//differnce in pointers should be the location
+        if (locationOfSkip != 0){// not sure if this "if" is needed
+            for(int i = 0; i < 5; i++){
+                uri[locationOfSkip] = 0;//not sure if it should be zero but it didnt like NULL
+            }
+        }
+    }
+
 
     is_static = requestParseURI(uri, filename, cgiargs);
     if (stat(filename, &sbuf) < 0) {
@@ -216,6 +261,15 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch, Thre
         t_stats->m_dynamicReq += 1;
         requestServeDynamic(fd, filename, cgiargs, arrival, dispatch, t_stats);
     }
-}
 
+    if(locationOfSkip != NULL){
+        Node* endNode = popLastInQueue(pendingRequestsQueue);
+        struct timeval currentTime;
+        gettimeofday(&currentTime, NULL);
+        timersub(&currentTime, &endNode->m_arrival, &dispatch);
+        //threadsInUse++; also dont think we need this cause we're using the same thread
+        //pthread_mutex_unlock(&queueLock); //////////dont think we need this but maybe
+        requestHandle(endNode->m_connFd, endNode->m_arrival,dispatch ,t_stats ,pendingRequestsQueue);
+    }
+}
 
