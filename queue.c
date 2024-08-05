@@ -14,22 +14,6 @@ Node* createNode(int connFd, struct timeval arrival){
     return newNode;
 }
 
-Node* getNodeInIndex(Queue* queue, int index) {
-    if(queue == NULL)
-    {
-        //do something
-    }
-    if(index < 1 || index > queue->m_size)
-    {
-        //do something
-    }
-    Node* currentNode = queue->m_headNode;
-    for (int i = 0; i < index; i++) {
-        currentNode = currentNode->m_nextNode;
-    }
-    return currentNode;
-}
-
 void removeNodeFromQueue(Queue* queue, Node* node) {
     if(queue == NULL)
     {
@@ -63,36 +47,20 @@ void removeNodeFromQueue(Queue* queue, Node* node) {
     //node wasnt found probably need to do somthing about it
 }
 
-void removeNodeFromQueueWithoutDeletingIt(Queue* queue, Node* node){
+Node* getNodeInIndex(Queue* queue, int index) {
     if(queue == NULL)
     {
         //do something
     }
-    if(node == NULL)
+    if(index < 1 || index > queue->m_size)
     {
         //do something
     }
     Node* currentNode = queue->m_headNode;
-    while (currentNode != NULL) {
-        if (currentNode == node) {
-            if (currentNode->m_nextNode != NULL) {
-                currentNode->m_nextNode->m_prevNode = currentNode->m_prevNode;
-            }
-            if (currentNode->m_prevNode != NULL) {
-                currentNode->m_prevNode->m_nextNode = currentNode->m_nextNode;
-            }
-            if (currentNode == queue->m_headNode) {
-                queue->m_headNode = currentNode->m_nextNode;
-            }
-            if (currentNode == queue->m_endNode) {
-                queue->m_endNode = currentNode->m_prevNode;
-            }
-            queue->m_size--;
-            return;
-        }
+    for (int i = 0; i < index; i++) {
         currentNode = currentNode->m_nextNode;
     }
-    //node wasnt found probably need to do somthing about it
+    return currentNode;
 }
 
 
@@ -135,10 +103,12 @@ Node* addToQueue(Queue* queue, int connFd, struct timeval arrival){
 
 Node* popQueue(Queue* queue){
 
-    if(queue == NULL){
+    if(queue == NULL)
+    {
         //do something
     }
-    if(getSize(queue) <= 0){
+    if(getSize(queue) <= 0)
+    {
         //do something
     }
 
@@ -159,21 +129,6 @@ Node* popQueue(Queue* queue){
     return headNode;
 }
 
-Node* popLastInQueue(Queue* queue){
-    if(queue == NULL){
-        //do something
-    }
-    if(getSize(queue) <= 0){
-        //do something
-    }
-
-    Node* endNode = queue->m_endNode;
-
-    removeNodeFromQueueWithoutDeletingIt(queue, endNode);
-
-    return endNode;
-}
-
 int getSize(Queue *queue){
     if(queue == NULL)
     {
@@ -181,4 +136,5 @@ int getSize(Queue *queue){
     }
     return queue->m_size;
 }
+
 
