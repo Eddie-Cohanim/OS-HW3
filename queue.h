@@ -23,13 +23,10 @@ typedef struct Node{
 Node* createNode(int connFd, struct timeval arrival);
 Node* getNodeInIndex(Queue* queue, int index);
 void removeNodeFromQueue(Queue* queue, Node* node);
-void removeNodeFromQueueWithoutDeletingIt(Queue* queue, Node* node);
-
 
 Queue* createQueue();
 Node* addToQueue(Queue* queue, int connFd, struct timeval arrival);
 Node* popQueue(Queue* queue);
-Node* popLastInQueue(Queue* queue);
 int getSize(Queue* queue);
 
 
