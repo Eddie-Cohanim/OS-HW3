@@ -80,8 +80,7 @@ int requestParseURI(char *uri, char *filename, char *cgiargs)
             strcat(filename, "home.html");
         }
         return 1;
-    } 
-    else {
+    } else {
         // dynamic
         ptr = index(uri, '?');
         if (ptr) {
@@ -91,20 +90,6 @@ int requestParseURI(char *uri, char *filename, char *cgiargs)
             strcpy(cgiargs, "");
         }
         sprintf(filename, "./public/%s", uri);
-
-
-
-
-        // FILE *file;
-        // file = fopen("/home/student/Documents/hw3/testing.txt", "a");
-        // fprintf(file, "%s\n", uri);
-        // fprintf(file, "%s\n", cgiargs);
-        // fprintf(file, "%s\n", filename);
-        // fclose(file);
-
-
-
-
         return 0;
     }
 }
@@ -112,22 +97,16 @@ int requestParseURI(char *uri, char *filename, char *cgiargs)
 //
 // Fills in the filetype given the filename
 //
-
-
 void requestGetFiletype(char *filename, char *filetype)
 {
-    if (strstr(filename, ".html")){
+    if (strstr(filename, ".html"))
         strcpy(filetype, "text/html");
-    }
-    else if (strstr(filename, ".gif")){  
+    else if (strstr(filename, ".gif"))
         strcpy(filetype, "image/gif");
-    }
-    else if (strstr(filename, ".jpg")){
+    else if (strstr(filename, ".jpg"))
         strcpy(filetype, "image/jpeg");
-    }
-    else{
+    else
         strcpy(filetype, "text/plain");
-    }
 }
 
 void requestServeDynamic(int fd, char *filename, char *cgiargs, struct timeval arrival, struct timeval dispatch, Thread_stats t_stats)
@@ -166,7 +145,7 @@ void requestServeStatic(int fd, char *filename, int filesize, struct timeval arr
 
     requestGetFiletype(filename, filetype);
 
-    srcfd = Open(filename, O_RDONLY, 0);////////////////////maybe should be the new filename in case of skip?
+    srcfd = Open(filename, O_RDONLY, 0);
 
     // Rather than call read() to read the file into memory,
     // which would require that we allocate a buffer, we memory-map the file
@@ -195,8 +174,7 @@ void requestServeStatic(int fd, char *filename, int filesize, struct timeval arr
 }
 
 // handle a request
-void requestHandle(int fd, struct timeval arrival, struct timeval dispatch, Thread_stats t_stats,
-                   Queue* pendingRequestsQueue, Node* requestNode, pthread_mutex_t queueLock, pthread_cond_t isBufferAvailable)
+void requestHandle(int fd, struct timeval arrival, struct timeval dispatch, Thread_stats t_stats)
 {
     int is_static;
     struct stat sbuf;
@@ -209,7 +187,7 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch, Thre
     sscanf(buf, "%s %s %s", method, uri, version);
     printf("%s %s %s\n", method, uri, version);
 
-    t_stats->m_totalReq += 1;
+    (t_stats->m_totalReq) += 1;
 
     if (strcasecmp(method, "GET")) {
         requestError(fd, method, "501", "Not Implemented", "OS-HW3 Server does not implement this method", arrival, dispatch, t_stats);
@@ -217,22 +195,7 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch, Thre
     }
     requestReadhdrs(&rio);
 
-    //////////////////////////// we need to remove skip from the URI here before requestParseURI
-    //int locationOfSkip = 0;
-    Node* endNode;
-    struct timeval currentTime;
-    char* skipLocation = strstr(uri, ".skip");
-    if( skipLocation != NULL){
-        memmove(skipLocation,skipLocation+5, strlen(skipLocation+5)+1);
-        pthread_mutex_lock(&queueLock);
-        endNode = popLastInQueue(pendingRequestsQueue);
-        gettimeofday(&currentTime, NULL);
-        pthread_mutex_unlock(&queueLock);
-    }
-
-
     is_static = requestParseURI(uri, filename, cgiargs);
-    //filename [MAXLINE] = "http://localhost:{server_port}/output.cgi";
     if (stat(filename, &sbuf) < 0) {
         requestError(fd, filename, "404", "Not found", "OS-HW3 Server could not find this file", arrival, dispatch, t_stats);
         return;
@@ -243,31 +206,16 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch, Thre
             requestError(fd, filename, "403", "Forbidden", "OS-HW3 Server could not read this file", arrival, dispatch, t_stats);
             return;
         }
-        t_stats->m_staticReq += 1;
+        (t_stats->m_staticReq) += 1;
         requestServeStatic(fd, filename, sbuf.st_size, arrival, dispatch, t_stats);
-    } 
-    else {
+    } else {
         if (!(S_ISREG(sbuf.st_mode)) || !(S_IXUSR & sbuf.st_mode)) {
             requestError(fd, filename, "403", "Forbidden", "OS-HW3 Server could not run this CGI program", arrival, dispatch, t_stats);
             return;
         }
-        t_stats->m_dynamicReq += 1;
+        (t_stats->m_dynamicReq) += 1;
         requestServeDynamic(fd, filename, cgiargs, arrival, dispatch, t_stats);
     }
-
-    //Close(requestNode->m_connFd);
-    //free(requestNode);
-
-    if(skipLocation != NULL){
-        //gettimeofday(&currentTime, NULL);
-        
-        // FILE *file;
-        // file = fopen("/home/student/Documents/hw3/testing.txt", "a");
-        // fprintf(file,"weve reached\n");
-        // fclose(file);
-        timersub(&currentTime, &endNode->m_arrival, &dispatch);
-        requestHandle(endNode->m_connFd, endNode->m_arrival, dispatch ,t_stats ,pendingRequestsQueue, endNode, queueLock, isBufferAvailable);
-        Close(endNode->m_connFd);
-        free(endNode);
-    }
 }
+
+

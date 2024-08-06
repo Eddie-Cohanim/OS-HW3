@@ -82,8 +82,7 @@ void *processRequest(void *arg){
         Node* requestNode = popQueue(pendingRequestsQueue);
         pthread_mutex_unlock(&queueLock);
         increase(thread);
-        requestHandle(requestNode->m_connFd, requestNode->m_arrival, timeHandler(requestNode), threadsStats[threadIndex],
-                      pendingRequestsQueue, requestNode, queueLock, isBufferAvailable);
+        requestHandle(requestNode->m_connFd, requestNode->m_arrival, timeHandler(requestNode), threadsStats[threadIndex]);
         Close(requestNode->m_connFd);
         free(requestNode);
         pthread_mutex_lock(&queueLock);
