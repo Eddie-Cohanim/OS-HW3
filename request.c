@@ -80,7 +80,8 @@ int requestParseURI(char *uri, char *filename, char *cgiargs)
             strcat(filename, "home.html");
         }
         return 1;
-    } else {
+    } 
+    else {
         // dynamic
         ptr = index(uri, '?');
         if (ptr) {
@@ -90,6 +91,20 @@ int requestParseURI(char *uri, char *filename, char *cgiargs)
             strcpy(cgiargs, "");
         }
         sprintf(filename, "./public/%s", uri);
+
+
+
+
+        // FILE *file;
+        // file = fopen("/home/student/Documents/hw3/testing.txt", "a");
+        // fprintf(file, "%s\n", uri);
+        // fprintf(file, "%s\n", cgiargs);
+        // fprintf(file, "%s\n", filename);
+        // fclose(file);
+
+
+
+
         return 0;
     }
 }
@@ -180,7 +195,7 @@ void requestServeStatic(int fd, char *filename, int filesize, struct timeval arr
 }
 
 // handle a request
-void requestHandle(int fd, struct timeval arrival, struct timeval dispatch, Thread_stats t_stats,
+void requestHandle(int fd, struct timeval arrival, struct timeval dispatch, Thread_stats t_stats, bool skipped,
                    Queue* pendingRequestsQueue, Node* requestNode, pthread_mutex_t queueLock, pthread_cond_t isBufferAvailable)
 {
     int is_static;
@@ -194,7 +209,9 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch, Thre
     sscanf(buf, "%s %s %s", method, uri, version);
     printf("%s %s %s\n", method, uri, version);
 
-    t_stats->m_totalReq += 1;
+    if(skipped == false){
+        t_stats->m_totalReq += 1;
+    }
 
     if (strcasecmp(method, "GET")) {
         requestError(fd, method, "501", "Not Implemented", "OS-HW3 Server does not implement this method", arrival, dispatch, t_stats);
@@ -203,26 +220,21 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch, Thre
     requestReadhdrs(&rio);
 
     //////////////////////////// we need to remove skip from the URI here before requestParseURI
-    int locationOfSkip = 0;
+    //int locationOfSkip = 0;
     Node* endNode;
     struct timeval currentTime;
-    if(strstr(uri, ".skip") != NULL){
-        locationOfSkip = (int) (uri - strstr(uri, ".skip"));//differnce in pointers should be the location
-        if (locationOfSkip != 0){// not sure if this "if" is needed
-        uri[locationOfSkip] = '\0';
-            /*for(int i = 0; i < 5; i++){
-                uri[locationOfSkip + i] = '\0';//not sure if it should be zero but it didnt like NULL
-            }*/
-        }
-
+    char* skipLocation = strstr(uri, ".skip");
+    if(skipLocation != NULL){
+        memmove(skipLocation,skipLocation + 5, strlen(skipLocation + 5) + 1);
         pthread_mutex_lock(&queueLock);
         endNode = popLastInQueue(pendingRequestsQueue);
-        pthread_mutex_unlock(&queueLock);
-        //gettimeofday(&currentTime, NULL);//not sure if here instead of the end
+        gettimeofday(&currentTime, NULL);
+        //pthread_mutex_unlock(&queueLock);
     }
 
 
     is_static = requestParseURI(uri, filename, cgiargs);
+    //filename [MAXLINE] = "http://localhost:{server_port}/output.cgi";
     if (stat(filename, &sbuf) < 0) {
         requestError(fd, filename, "404", "Not found", "OS-HW3 Server could not find this file", arrival, dispatch, t_stats);
         return;
@@ -233,25 +245,37 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch, Thre
             requestError(fd, filename, "403", "Forbidden", "OS-HW3 Server could not read this file", arrival, dispatch, t_stats);
             return;
         }
-        t_stats->m_staticReq += 1;
+        if(skipped == false){
+            t_stats->m_staticReq += 1;
+        }
         requestServeStatic(fd, filename, sbuf.st_size, arrival, dispatch, t_stats);
-    } else {
+    } 
+    else {
         if (!(S_ISREG(sbuf.st_mode)) || !(S_IXUSR & sbuf.st_mode)) {
             requestError(fd, filename, "403", "Forbidden", "OS-HW3 Server could not run this CGI program", arrival, dispatch, t_stats);
             return;
         }
-        t_stats->m_dynamicReq += 1;
+        if(skipped == false){
+            t_stats->m_dynamicReq += 1;
+        }
         requestServeDynamic(fd, filename, cgiargs, arrival, dispatch, t_stats);
     }
 
-    Close(requestNode->m_connFd);
-    free(requestNode);
+    //Close(requestNode->m_connFd);
+    //free(requestNode);
 
-    if(locationOfSkip != 0){
-        gettimeofday(&currentTime, NULL);
+    if(skipLocation != NULL){
+        //gettimeofday(&currentTime, NULL);
+        
+        // FILE *file;
+        // file = fopen("/home/student/Documents/hw3/testing.txt", "a");
+        // fprintf(file,"weve reached\n");
+        // fclose(file);
         timersub(&currentTime, &endNode->m_arrival, &dispatch);
-        requestHandle(endNode->m_connFd, endNode->m_arrival, dispatch ,t_stats ,pendingRequestsQueue, endNode, queueLock, isBufferAvailable);
+        requestHandle(endNode->m_connFd, endNode->m_arrival, dispatch ,t_stats, true, pendingRequestsQueue, endNode, queueLock, isBufferAvailable);
         Close(endNode->m_connFd);
         free(endNode);
+        pthread_mutex_unlock(&queueLock);
     }
+
 }
